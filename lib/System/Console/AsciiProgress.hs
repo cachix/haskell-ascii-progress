@@ -5,10 +5,13 @@ module System.Console.AsciiProgress
     , Stats(..)
     , isComplete
     , newProgressBar
+    , newProgressBarWithRegion
     , complete
     , tick
     , tickN
     , tickNI
+    , cancelUpdates
+    , clearWith
     , getProgressStrIO
     , getProgressStats
     , getProgressStr
@@ -22,7 +25,7 @@ import           Control.Applicative                   ((<$>))
 import           Control.Concurrent                    (modifyMVar_, readChan,
                                                         readMVar, writeChan)
 import           Control.Concurrent.Async              (Async (..), async, poll,
-                                                        wait)
+                                                        wait, cancel)
 import           Data.Default                          (Default (..))
 import           Data.Maybe                            (fromMaybe, isJust)
 import           System.Console.AsciiProgress.Internal
@@ -59,6 +62,10 @@ data ProgressBar = ProgressBar { pgInfo   :: ProgressBarInfo
 newProgressBar :: Options -> IO ProgressBar
 newProgressBar opts = do
     region <- openConsoleRegion Linear
+    newProgressBarWithRegion opts region
+
+newProgressBarWithRegion :: Options -> ConsoleRegion -> IO ProgressBar
+newProgressBarWithRegion opts region = do
     info <- newProgressBarInfo opts
 
     -- Display initial progress-bar
@@ -88,7 +95,6 @@ newProgressBar opts = do
         stats <- getInfoStats info
         let progressStr = pgGetProgressStr opts opts stats
         setConsoleRegion region progressStr
-
 -- |
 -- Tick the progress bar
 tick :: ProgressBar -> IO ()
@@ -117,6 +123,14 @@ complete pg@(ProgressBar info future _) = do
     let total = pgTotal (pgOptions info)
     tickNI pg total
     wait future
+
+cancelUpdates :: ProgressBar -> IO ()
+cancelUpdates (ProgressBar _ future _) = cancel future
+
+clearWith :: ProgressBar -> String -> IO ()
+clearWith pg@(ProgressBar _ _ region) str = do
+  cancelUpdates pg
+  setConsoleRegion region str
 
 -- |
 -- Gets the progress bar current @Stats @object
